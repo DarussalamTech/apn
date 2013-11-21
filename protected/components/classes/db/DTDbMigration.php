@@ -241,7 +241,7 @@ class DTDbMigration extends CDbMigration {
     /**
      *  read json file
      */
-    public function readJsonData($file) {
+    public function readsqlFIle($file) {
         $dataFile = Yii::app()->basePath . DIRECTORY_SEPARATOR . "data" . DIRECTORY_SEPARATOR . $file;
 
         $fh = fopen($dataFile, 'r');
