@@ -11,6 +11,7 @@ $import = array(
     'application.components.*',
 
     'application.components.classes.*',
+    'application.components.apn.*',
     'application.components.classes.db.*',
     'application.components.widgets.*',
     'application.components.dataProviders.*',
