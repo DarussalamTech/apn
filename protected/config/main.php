@@ -16,7 +16,7 @@ include '_config/_conf_params.php';
 return array(
     'basePath' => dirname(__FILE__) . DIRECTORY_SEPARATOR . '..',
     'name' => 'Darussalam Book Managment',
-    'theme' => 'abound',
+    'theme' => 'apn',
     'homeUrl'=>array('/site/index'),
     // preloading 'log' component
     'preload' => array('log'),

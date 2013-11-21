@@ -54,8 +54,7 @@ class Controller extends CController {
     public function beforeAction($action) {
         
         parent::beforeAction($action);
-        
-       // Yii::app()->theme = "abound";
+
         return true;
     }
 
