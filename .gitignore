@@ -2,3 +2,4 @@
 /protected/runtime/
 /uploads/
 /nbproject/
+/protected/config/_config/_conf_db.php
