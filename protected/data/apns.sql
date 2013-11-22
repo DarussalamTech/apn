@@ -89,7 +89,11 @@ CREATE TRIGGER `Archive` BEFORE UPDATE ON `apns_devices` FOR EACH ROW INSERT INT
 	OLD.`pushsound`,
 	OLD.`development`,
 	OLD.`status`,
-	NOW()
+	NOW(),
+        OLD.create_time,
+        OLD.create_user_id,
+        OLD.update_time,
+        OLD.update_user_id
 );;
 DELIMITER ;
 

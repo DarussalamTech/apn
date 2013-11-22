@@ -239,6 +239,7 @@ class APNS {
 
             switch ($args['task']) {
                 case "register":
+
                     $this->_registerDevice(
                             $args['appname'], $args['appversion'], $args['deviceuid'], $args['devicetoken'], $args['devicename'], $args['devicemodel'], $args['deviceversion'], $args['pushbadge'], $args['pushalert'], $args['pushsound'], isset($args['clientid']) ? $args['clientid'] : null
                     );
@@ -327,57 +328,45 @@ class APNS {
             $this->_triggerError('Push Sount must be either Enabled or Disabled.', E_USER_ERROR);
 
 
-        $appname = $this->db->quoteValue($appname);
-        $appversion = $this->db->quoteValue($appversion);
-        $deviceuid = $this->db->quoteValue($deviceuid);
-        $devicetoken = $this->db->quoteValue($devicetoken);
-        $devicename = $this->db->quoteValue($devicename);
-        $devicemodel = $this->db->quoteValue($devicemodel);
-        $deviceversion = $this->db->quoteValue($deviceversion);
-        $pushbadge = $this->db->quoteValue($pushbadge);
-        $pushalert = $this->db->quoteValue($pushalert);
-        $pushsound = $this->db->quoteValue($pushsound);
-        $clientid = $this->db->quoteValue($clientid);
-
         // store device for push notifications
 
         $command = $this->db->createCommand("SET NAMES 'utf8';");
         $command->query($sql);
-        $sql = "INSERT INTO `apns_devices`
-				VALUES (
-					NULL,
-					'{$clientid}',
-					'{$appname}',
-					'{$appversion}',
-					'{$deviceuid}',
-					'{$devicetoken}',
-					'{$devicename}',
-					'{$devicemodel}',
-					'{$deviceversion}',
-					'{$pushbadge}',
-					'{$pushalert}',
-					'{$pushsound}',
-					'{$this->DEVELOPMENT}',
-					'active',
-					NOW(),
-					NOW()
-				)
-				ON DUPLICATE KEY UPDATE
-				# If not using real UUID (iOS5+), uid may change on reinstall.
-				`deviceuid`='{$deviceuid}',
-				`devicetoken`='{$devicetoken}',
-				`appversion`='{$appversion}',
-				`devicename`='{$devicename}',
-				`devicemodel`='{$devicemodel}',
-				`deviceversion`='{$deviceversion}',
-				`pushbadge`='{$pushbadge}',
-				`pushalert`='{$pushalert}',
-				`pushsound`='{$pushsound}',
-				`status`='active',
-				`modified`=NOW();";
 
-        $command = $this->db->createCommand($sql);
-        $command->query($sql);
+        $model = new ApnsDevices;
+        $model->clientid = $clientid;
+        $model->appname = $appname;
+        $model->appversion = $appversion;
+        $model->deviceuid = $deviceuid;
+        $model->devicetoken = $devicetoken;
+        $model->devicename = $devicename;
+        $model->devicemodel = $devicemodel;
+        $model->deviceversion = $deviceversion;
+        $model->pushbadge = $pushbadge;
+        $model->pushalert = $pushalert;
+        $model->pushsound = $pushsound;
+        $model->development = $this->DEVELOPMENT;
+
+        if ($model->validate()) {
+            $model->save(false);
+        } else {
+            $criteria = new CDbCriteria();
+            if ($model->getError("appname") == "unique_device") {
+
+                $criteria->compare("appname", $model->appname, false, "AND");
+                $criteria->compare("deviceuid", $model->deviceuid, false);
+            } else if ($model->getError("appname") == "unique_token") {
+
+                $criteria->compare("appname", $model->appname, false, "AND");
+                $criteria->compare("devicetoken", $model->devicetoken, false);
+            }
+            if ($model = $model->find($criteria)) {
+                // CVarDumper::dump($model->attributes,10,true);
+                $model->status = "active";
+
+                $model->updateByPrimeryKey($model->primaryKey, $model->attributes);
+            }
+        }
     }
 
     /**
@@ -417,7 +406,7 @@ class APNS {
 				AND `apns_messages`.`delivery` <= NOW()
 				AND `apns_devices`.`status`='active'
 			GROUP BY `apns_messages`.`fk_device`
-			ORDER BY `apns_messages`.`created` ASC
+			ORDER BY `apns_messages`.`create_time` ASC
 			LIMIT 100;";
 
         $this->_iterateMessages($sql);
@@ -443,7 +432,7 @@ class APNS {
 			WHERE `apns_messages`.`status`='queued'
 				AND `apns_messages`.`delivery` <= NOW()
 				AND `apns_devices`.`status`='active'
-			ORDER BY `apns_messages`.`created` ASC
+			ORDER BY `apns_messages`.`create_time` ASC
 			LIMIT 100;";
 
         $this->_iterateMessages($sql);
@@ -460,31 +449,27 @@ class APNS {
      */
     private function _iterateMessages($sql) {
 
+        $command = $this->db->createCommand($sql);
+        $data = $command->queryAll();
 
-        if ($result = $this->db->query($sql)) {
-            //var_dump ($result);
-            if ($result->num_rows) {
-
-                while ($row = $result->fetch_array(MYSQLI_ASSOC)) {
-                    $pid = $this->db->quoteValue($row['pid']);
-                    $message = stripslashes($this->db->quoteValue($row['message']));
-                    $token = $this->db->quoteValue($row['devicetoken']);
-                    $development = $this->db->quoteValue($row['development']);
+        foreach ($data as $row) {
+            $pid = $this->db->quoteValue($row['pid']);
+            $message = stripslashes($this->db->quoteValue($row['message']));
+            $token = $this->db->quoteValue($row['devicetoken']);
+            $development = $this->db->quoteValue($row['development']);
 
 
-                    // Connect the socket the first time it's needed.
-                    if (!isset($this->sslStreams[$development])) {
-                        $this->_connectSSLSocket($development);
-                    }
-
-                    $this->_pushMessage($pid, $message, $token, $development);
-                }
-                // Close streams and check feedback service
-                foreach ($this->sslStreams as $key => $socket) {
-                    $this->_closeSSLSocket($key);
-                    $this->_checkFeedback($key);
-                }
+            // Connect the socket the first time it's needed.
+            if (!isset($this->sslStreams[$development])) {
+                $this->_connectSSLSocket($development);
             }
+
+            $this->_pushMessage($pid, $message, $token, $development);
+        }
+        // Close streams and check feedback service
+        foreach ($this->sslStreams as $key => $socket) {
+            $this->_closeSSLSocket($key);
+            $this->_checkFeedback($key);
         }
     }
 
@@ -812,8 +797,9 @@ class APNS {
                 $sql .= " AND `clientid` = '{$this->db->quoteValue($clientId)}'";
 
             $ids = array();
-            $result = $this->db->query($sql);
-            while ($row = $result->fetch_array(MYSQLI_ASSOC))
+
+            $command = $this->db->createCommand($sql);
+            foreach ($command->queryAll() as $row)
                 $ids[] = $row['pid'];
 
             $fk_device = $ids;
@@ -837,9 +823,9 @@ class APNS {
     public function newMessageByDeviceUId($deviceUId = NULL, $delivery = NULL, $clientId = NULL) {
 
         $sql = "SELECT `pid` FROM `apns_devices` WHERE `deviceuid`='$deviceUId'";
+        $command = $this->db->createCommand($sql);
 
-        $result = $this->db->query($sql);
-        $row = $result->fetch_array(MYSQLI_ASSOC);
+        $row = $command->queryRow();
 
         if ($row != NULL)
             $this->newMessage($row["pid"], $delivery, $clientId);
@@ -897,13 +883,13 @@ class APNS {
 			WHERE `pid` IN (" . implode(', ', $list) . ")
 				AND `status`='active'" . (is_null($clientId) ? '' : "
 				AND `clientid` = '{$clientId}'");
+        $command = $this->db->createCommand($sql);
+        $data = $command->queryAll();
 
-        $result = $this->db->query($sql);
-
-        if ($result->num_rows == 0)
+        if (count($data) == 0)
             $this->_triggerError('This user does not exist in the database. Message will not be delivered.');
 
-        while ($row = $result->fetch_array(MYSQLI_ASSOC)) {
+        foreach ($data as $row) {
             $deliver = true;
 
             // Device id.
