@@ -43,11 +43,12 @@ class ApnsMessages extends DTActiveRecord
 		// NOTE: you should only define rules for those attributes that
 		// will receive user inputs.
 		return array(
-			array('clientid, fk_device, message, delivery, create_time, create_user_id, update_time, update_user_id', 'required'),
-			array('clientid', 'length', 'max'=>64),
+			array('fk_device, message, delivery, create_time, create_user_id, update_time, update_user_id', 'required'),
+			
 			array('fk_device, status', 'length', 'max'=>9),
 			array('message', 'length', 'max'=>255),
 			array('create_user_id, update_user_id', 'length', 'max'=>11),
+                        array("clientid",'safe'),
 			// The following rule is used by search().
 			// Please remove those attributes that should not be searched.
 			array('pid, clientid, fk_device, message, delivery, status, create_time, create_user_id, update_time, update_user_id', 'safe', 'on'=>'search'),

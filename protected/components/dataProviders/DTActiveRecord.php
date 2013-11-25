@@ -27,15 +27,20 @@ class DTActiveRecord extends CActiveRecord {
 
     public function __construct($scenario = 'insert') {
 
-        $this->_action = isset(Yii::app()->controller->action)?Yii::app()->controller->action->id:"";
-        $this->_controller = Yii::app()->controller->id;
-        $this->_current_module = get_class(Yii::app()->controller->getModule());
+        /**
+         * for only web application
+         */
+        if (php_sapi_name() != "cli") {
+            $this->_action = isset(Yii::app()->controller->action) ? Yii::app()->controller->action->id : "";
+            $this->_controller = Yii::app()->controller->id;
+            $this->_current_module = get_class(Yii::app()->controller->getModule());
+        }
 
         parent::__construct($scenario);
     }
 
     public function afterFind() {
-        if (isset(Yii::app()->controller->action->id)) {
+        if (php_sapi_name() != "cli" && isset(Yii::app()->controller->action->id)) {
             $this->_action = Yii::app()->controller->action->id;
         }
 
@@ -45,28 +50,30 @@ class DTActiveRecord extends CActiveRecord {
 
     protected function beforeValidate() {
 
-
-        $this->_action = Yii::app()->controller->action->id;
+        if (php_sapi_name() != "cli"){
+            $this->_action = Yii::app()->controller->action->id;
+        }
+        
         if ($this->isNewRecord) {
 
+            
             // set the create date, last updated date and the user doing the creating
             $this->create_time = $this->update_time = date("Y-m-d H:i:s"); //new CDbExpression('NOW()');
-            $this->create_user_id = $this->update_user_id = Yii::app()->user->id;
-            // $this->users_id=1;//$this->update_user_id=Yii::app()->user->id;
+            $this->create_user_id = $this->update_user_id = php_sapi_name() != "cli"?Yii::app()->user->id:1;
+            
+   
+        
         } else {
             //not a new record, so just set the last updated time and last updated user id
             $this->update_time = new CDbExpression('NOW()');
-            $this->update_user_id = Yii::app()->user->id;
+            $this->update_user_id = php_sapi_name() != "cli"?Yii::app()->user->id:1;
             // $this->users_id=1;
         }
-        /**
-          special conidtion
-         */
-        if (empty(Yii::app()->user->id)) {
-            $this->create_user_id = 1;
-            $this->update_user_id = 1;
-        }
+       
+    
+        
         parent::beforeValidate();
+         
         $this->attributes = $this->decodeArray($this->attributes);
         return true;
     }
@@ -78,12 +85,8 @@ class DTActiveRecord extends CActiveRecord {
      * @return boolean 
      */
     protected function beforeSave() {
-
-        $update_time = date("Y-m-d") . " " . date("H:i:s");
-
-        if ($this->_controller != "product" && $this->_action == "viewImage") {
-            $this->attributes = CHtml::encodeArray($this->attributes);
-        }
+        
+      
         parent::beforeSave();
 
         return true;
@@ -160,6 +163,7 @@ class DTActiveRecord extends CActiveRecord {
 
         return $d;
     }
+
     /**
      * 
      * @param type $pk
@@ -171,7 +175,7 @@ class DTActiveRecord extends CActiveRecord {
     public function updateByPrimeryKey($pk, $attributes, $condition = '', $params = array()) {
         $updateAttr = array("update_time" => new CDbExpression('NOW()'), "update_user_id" => Yii::app()->user->id);
         $attributes = array_merge($attributes, $updateAttr);
-        
+
         parent::updateByPk($pk, $attributes, $condition, $params);
         return true;
     }

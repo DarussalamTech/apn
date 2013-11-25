@@ -78,7 +78,7 @@ class APNS {
      * @var string
      * @access private
      */
-    private $logPath = '/var/www/webservices/easyapns/apns.log';
+    private $logPath = '/runtime/apns.log';
 
     /**
      * Max files size of log before it is truncated. 1048576 = 1MB.  Added incase you do not add to a log
@@ -205,6 +205,8 @@ class APNS {
      */
     function __construct($args = NULL, $certificate = NULL, $sandboxCertificate = NULL, $logPath = NULL) {
 
+        $this->logPath = Yii::app()->basePath . "/runtime/apn.log";
+
         if (!empty($certificate) && file_exists($certificate)) {
             $this->certificate = $certificate;
         }
@@ -247,7 +249,7 @@ class APNS {
                     break;
 
                 case "fetch":
-                    //echo "ali";
+
                     $this->_fetchMessages();
                     break;
 
@@ -334,7 +336,7 @@ class APNS {
         $command->query($sql);
 
         $model = new ApnsDevices;
-        $model->clientid = $clientid;
+        $model->clientid = !empty($clientid) ? $clientid : "NULL";
         $model->appname = $appname;
         $model->appversion = $appversion;
         $model->deviceuid = $deviceuid;
@@ -361,8 +363,10 @@ class APNS {
                 $criteria->compare("devicetoken", $model->devicetoken, false);
             }
             if ($model = $model->find($criteria)) {
-                // CVarDumper::dump($model->attributes,10,true);
+
                 $model->status = "active";
+
+
 
                 $model->updateByPrimeryKey($model->primaryKey, $model->attributes);
             }
@@ -452,24 +456,27 @@ class APNS {
         $command = $this->db->createCommand($sql);
         $data = $command->queryAll();
 
-        foreach ($data as $row) {
-            $pid = $this->db->quoteValue($row['pid']);
-            $message = stripslashes($this->db->quoteValue($row['message']));
-            $token = $this->db->quoteValue($row['devicetoken']);
-            $development = $this->db->quoteValue($row['development']);
+        if (!empty($data)) {
+            foreach ($data as $row) {
+                $pid = $row['pid'];
+                $message = stripslashes($row['message']);
+                $token = $row['devicetoken'];
+                $development = $row['development'];
 
 
-            // Connect the socket the first time it's needed.
-            if (!isset($this->sslStreams[$development])) {
-                $this->_connectSSLSocket($development);
+                // Connect the socket the first time it's needed.
+                if (!isset($this->sslStreams[$development])) {
+                    $this->_connectSSLSocket($development);
+                }
+
+                $this->_pushMessage($pid, $message, $token, $development);
             }
 
-            $this->_pushMessage($pid, $message, $token, $development);
-        }
-        // Close streams and check feedback service
-        foreach ($this->sslStreams as $key => $socket) {
-            $this->_closeSSLSocket($key);
-            $this->_checkFeedback($key);
+            // Close streams and check feedback service
+            foreach ($this->sslStreams as $key => $socket) {
+                $this->_closeSSLSocket($key);
+                $this->_checkFeedback($key);
+            }
         }
     }
 
@@ -486,7 +493,7 @@ class APNS {
         stream_context_set_option($ctx, 'ssl', 'local_cert', $this->apnsData[$development]['certificate']);
         stream_context_set_option($ctx, 'ssl', 'passphrase', $this->apnsData[$development]['passphrase']);
         $this->sslStreams[$development] = stream_socket_client($this->apnsData[$development]['ssl'], $error, $errorString, 100, (STREAM_CLIENT_CONNECT | STREAM_CLIENT_PERSISTENT), $ctx);
-        if (!$this->sslStreams[$development]) {
+        if (!isset($this->sslStreams[$development]) || !$this->sslStreams[$development]) {
             $this->_triggerError("Failed to connect to APNS: {$error} {$errorString}.");
             unset($this->sslStreams[$development]);
             return false;
@@ -528,7 +535,7 @@ class APNS {
             $this->_triggerError('Missing message token.', E_USER_ERROR);
         if (strlen($development) == 0)
             $this->_triggerError('Missing development status.', E_USER_ERROR);
-        echo "PUSHER area";
+
         $fp = false;
         if (isset($this->sslStreams[$development])) {
             $fp = $this->sslStreams[$development];
@@ -701,6 +708,8 @@ class APNS {
                 $fh = fopen($this->logPath, 'w');
             else
                 $fh = fopen($this->logPath, 'a');
+
+
             fwrite($fh, $error);
             fclose($fh);
         }
@@ -794,7 +803,7 @@ class APNS {
 
             // Only to a set of client?
             if (!is_null($clientId))
-                $sql .= " AND `clientid` = '{$this->db->quoteValue($clientId)}'";
+                $sql .= " AND `clientid` = '{$clientId}'";
 
             $ids = array();
 
@@ -860,7 +869,7 @@ class APNS {
         // loop through possible users
         $to = $this->message['send']['to'];
         $when = $this->message['send']['when'];
-        $clientId = is_null($this->message['aps']['clientid']) ? null : $this->db->quoteValue($this->message['aps']['clientid']);
+        $clientId = is_null($this->message['aps']['clientid']) ? null : $this->message['aps']['clientid'];
         $list = (is_array($to)) ? $to : array($to);
         unset($this->message['send']);
 
@@ -895,9 +904,9 @@ class APNS {
             // Device id.
             $deviceid = $row['pid'];
             // Get the push settings.
-            $pushbadge = $this->db->quoteValue($row['pushbadge']);
-            $pushalert = $this->db->quoteValue($row['pushalert']);
-            $pushsound = $this->db->quoteValue($row['pushsound']);
+            $pushbadge = $row['pushbadge'];
+            $pushalert = $row['pushalert'];
+            $pushsound = $row['pushsound'];
 
             // has user disabled messages?
             if ($pushbadge == 'disabled' && $pushalert == 'disabled' && $pushsound == 'disabled')
@@ -935,28 +944,25 @@ class APNS {
                     unset($usermessage['aps']);
                 }
 
-                $fk_device = $this->db->quoteValue($deviceid);
+
                 $message = $this->_jsonEncode($usermessage);
-                $message = $this->db->quoteValue($message);
+
                 $delivery = (!empty($when)) ? "'{$when}'" : 'NOW()';
 
 
                 $command = $this->db->createCommand("SET NAMES 'utf8';");
                 $command->query();
 
-                $sql = "INSERT INTO `apns_messages`
-						VALUES (
-							NULL,
-							'{$clientId}',
-							'{$fk_device}',
-							'{$message}',
-							{$delivery},
-							'queued',
-							NOW(),
-							NOW()
-						);";
-                $command = $this->db->createCommand($sql);
-                $command->query();
+
+                $model = new ApnsMessages;
+                $model->clientid = $clientId;
+                $model->fk_device = $deviceid;
+                $model->message = $message;
+                $model->delivery = new CDbExpression('NOW()');
+                $model->status = "queued";
+
+                $model->save();
+
 
                 unset($usermessage);
             }
@@ -999,10 +1005,12 @@ class APNS {
      * @access public
      */
     public function addMessageAlert($alert = NULL, $actionlockey = NULL, $lockey = NULL, $locargs = NULL) {
+
         if (!$this->message)
             $this->_triggerError('Must use newMessage() before calling this method.', E_USER_ERROR);
         if (isset($this->message['aps']['alert'])) {
             unset($this->message['aps']['alert']);
+
             $this->_triggerError('An existring alert was already created but not delivered. The previous alert has been removed.');
         }
         switch (true) {
@@ -1010,6 +1018,7 @@ class APNS {
                 if (!is_string($alert))
                     $this->_triggerError('Invalid Alert Format. See documentation for correct procedure.', E_USER_ERROR);
                 $this->message['aps']['alert'] = (string) $alert;
+
                 break;
 
             case (!empty($alert) && !empty($actionlockey) && empty($lockey) && empty($locargs)):
@@ -1019,6 +1028,7 @@ class APNS {
                     $this->_triggerError('Invalid Action Loc Key Format. See documentation for correct procedure.', E_USER_ERROR);
                 $this->message['aps']['alert']['body'] = (string) $alert;
                 $this->message['aps']['alert']['action-loc-key'] = (string) $actionlockey;
+
                 break;
 
             case (empty($alert) && empty($actionlockey) && !empty($lockey) && !empty($locargs)):
